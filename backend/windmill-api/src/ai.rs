@@ -38,6 +38,7 @@ trait AiRequest {
 }
 
 mod openai {
+    use std::env;
     use super::*;
 
     use super::{get_variable_or_self, KeyCache};
@@ -93,7 +94,7 @@ mod openai {
         }
     }
 
-    const BASE_URL: &str = "https://api.openai.com/v1";
+
     impl AiRequest for OpenaiCache {
         fn prepare_request(self, openai_path: &str, mut body: Bytes) -> Result<RequestBuilder> {
             let OpenaiCache { api_key, azure_base_path, organization_id, user } = self;
@@ -119,24 +120,24 @@ mod openai {
                     .into();
             }
 
-            let base_url = if let Some(base_url) = azure_base_path {
-                base_url
-            } else {
-                BASE_URL.to_string()
+            let base_url = match env::var("OPENAI_API_BASE") {
+                Ok(v) => v,
+                Err(_) => {
+                    if let Some(base_url) = azure_base_path {
+                        base_url
+                    } else {
+                        "https://api.openai.com/v1".to_string()
+                    }
+                }
             };
+            
             let url = format!("{}/{}", base_url, openai_path);
             let mut request = HTTP_CLIENT
                 .post(url)
                 .header("content-type", "application/json")
                 .body(body);
 
-            if base_url != BASE_URL {
-                request = request
-                    .header("api-key", api_key)
-                    .query(&[("api-version", API_VERSION)])
-            } else {
-                request = request.header("authorization", format!("Bearer {}", api_key))
-            }
+            request = request.header("Authorization", format!("Bearer {}", api_key));
 
             if let Some(org_id) = organization_id {
                 request = request.header("OpenAI-Organization", org_id);
